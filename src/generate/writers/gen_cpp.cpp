@@ -496,6 +496,11 @@ void CppCodeGenerator::InitializeGenerationState()
         }
     }
 
+    // If the project specifies a common_art_header, then calculate the #include statement
+    // for it relative to the current form's output file. Forms that use images declared in
+    // that header include it instead of embedding their own copies.
+    m_common_art_header_statement = GetCommonArtHeaderInclude(m_form_node);
+
     // Initialize these values before calling ParseImageProperties
     m_NeedAnimationFunction = false;
     m_NeedArtProviderHeader = false;
@@ -712,6 +717,19 @@ void CppCodeGenerator::CollectBaseIncludes(std::set<std::string>& src_includes,
     if (m_form_node->HasValue(prop_icon))
     {
         src_includes.insert("#include <wx/icon.h>");
+
+        // If the project's common_art_header provides the icon, then the generated icon
+        // code will reference a bundle function in that header, so it must be included.
+        if (!m_common_art_header_statement.empty())
+        {
+            wxue::ViewVector parts(m_form_node->as_string(prop_icon), BMP_PROP_SEPARATOR,
+                                   wxue::TRIM::both);
+            if (parts.size() > IndexImage &&
+                CommonArtHeaderProvidesImage(ProjectImages.GetEmbeddedImage(parts[IndexImage])))
+            {
+                src_includes.insert(m_common_art_header_statement);
+            }
+        }
     }
 
     if (m_NeedArtProviderHeader)
@@ -1639,6 +1657,13 @@ void CppCodeGenerator::WriteImagePreConstruction(Code& code)
             continue;
         }
 
+        // If the project's common_art_header declares this image, then its extern
+        // declaration is in that header, so there is no need to write one here.
+        if (CommonArtHeaderProvidesImage(iter_array))
+        {
+            continue;
+        }
+
         if (!is_namespace_written)
         {
             is_namespace_written = true;
@@ -1714,6 +1739,18 @@ void CppCodeGenerator::ProcessImageProperty(const NodeProperty& prop, bool isAdd
         (prop.as_string().starts_with("Embed") || prop.as_string().starts_with("SVG")))
     {
         set_src.insert(m_include_images_statement);
+    }
+
+    // If the project has a common_art_header and it provides the images for this property,
+    // then add that header to the include set instead of embedding the images locally.
+    if (!m_common_art_header_statement.empty() &&
+        (prop.as_string().starts_with("Embed") || prop.as_string().starts_with("SVG")))
+    {
+        const wxue::StringVector parts(prop.as_string(), BMP_PROP_SEPARATOR, wxue::TRIM::both);
+        if (!CommonArtHeaderBundleName(&parts).empty())
+        {
+            set_src.insert(m_common_art_header_statement);
+        }
     }
 
     if (prop.as_string().starts_with("Art"))
@@ -1848,6 +1885,12 @@ void CppCodeGenerator::WriteImagePostHeader()
     for (const auto* iter_array: m_embedded_images)
     {
         if (iter_array->get_Form() == images_form)
+        {
+            continue;
+        }
+
+        // The common art header already has the extern declaration for this image.
+        if (CommonArtHeaderProvidesImage(iter_array))
         {
             continue;
         }

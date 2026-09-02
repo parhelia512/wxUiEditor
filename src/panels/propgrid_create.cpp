@@ -538,6 +538,16 @@ wxPGProperty* PropGridPanel::CreatePGProperty(NodeProperty* prop)
                         return new_pg_property;
 #endif
 
+                    case prop_common_art_header:
+                        {
+                            new_pg_property->SetAttribute(wxPG_DIALOG_TITLE, "Common Art Header");
+                            new_pg_property->SetAttribute(wxPG_FILE_WILDCARD,
+                                                          "Header Files|*.h;*.hh;*.hpp;*.hxx");
+                            new_pg_property->SetAttribute(wxPG_FILE_INITIAL_PATH,
+                                                          Project.get_ProjectPath().wx());
+                        }
+                        return new_pg_property;
+
                     case prop_local_pch_file:
                         {
                             new_pg_property->SetAttribute(wxPG_DIALOG_TITLE, "Precompiled header");

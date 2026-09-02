@@ -27,14 +27,41 @@
 
 #include "mockup_content.h"
 
-#include "base_generator.h"  // BaseGenerator -- Base Generator class
-#include "mainframe.h"       // MainFrame -- Main window frame
-#include "mockup_parent.h"   // Top-level MockUp Parent window
-#include "mockup_wizard.h"   // MockupWizard Mock Up class
-#include "node.h"            // Node class
-#include "node_creator.h"    // NodeCreator class
-#include "node_decl.h"       // NodeDeclaration class
-#include "utils.h"           // Utility functions that work with properties
+#include "base_generator.h"   // BaseGenerator -- Base Generator class
+#include "image_handler.h"    // ProjectImages -- ImageHandler singleton
+#include "mainframe.h"        // MainFrame -- Main window frame
+#include "mockup_parent.h"    // Top-level MockUp Parent window
+#include "mockup_wizard.h"    // MockupWizard Mock Up class
+#include "node.h"             // Node class
+#include "node_creator.h"     // NodeCreator class
+#include "node_decl.h"        // NodeDeclaration class
+#include "project_handler.h"  // ProjectHandler class
+#include "utils.h"            // Utility functions that work with properties
+
+// If the project specifies a common art header, then any images the header declares will not be
+// embedded in generated code. The mockup still needs the pixel data for those images, so we
+// resolve referenced images now to ensure the ImageHandler cache holds them before building the
+// preview. Without this, a form using images from the shared header would show the placeholder
+// bitmap instead of the actual art.
+static void EnsureCommonArtHeaderImages(Node* form_node)
+{
+    if (!form_node || Project.as_string(prop_common_art_header).empty())
+    {
+        return;
+    }
+
+    for (const auto& iter: form_node->get_PropsVector())
+    {
+        if (!iter.HasValue())
+        {
+            continue;
+        }
+        if (iter.type() == type_image)
+        {
+            std::ignore = ProjectImages.GetPropertyBitmapBundle(iter.as_string());
+        }
+    }
+}
 
 constexpr double VARIANT_SCALE_FACTOR = 1.2;
 constexpr int MAGNIFY_INCREMENT = 200;
@@ -71,6 +98,7 @@ void MockupContent::CreateAllGenerators()
 
     ASSERT(m_mockupParent->getSelectedForm());
     Node* form = m_mockupParent->getSelectedForm();
+    EnsureCommonArtHeaderImages(form);
     if (m_variant != wxWINDOW_VARIANT_NORMAL)
     {
         ResetWindowVariant();

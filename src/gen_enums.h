@@ -176,6 +176,7 @@ namespace GenEnum
         prop_column_sizes,
         prop_combine_all_forms,
         prop_combined_xrc_file,
+        prop_common_art_header,
         prop_const_values,
         prop_construction,
         prop_contents,

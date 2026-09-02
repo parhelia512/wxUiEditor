@@ -1,15 +1,17 @@
 /////////////////////////////////////////////////////////////////////////////
 // Purpose:   Generate Src and Hdr files for the Base Class
 // Author:    Ralph Walden
-// Copyright: Copyright (c) 2020-2025 KeyWorks Software (Ralph Walden)
+// Copyright: Copyright (c) 2020-2026 KeyWorks Software (Ralph Walden)
 // License:   Apache License -- see ../../LICENSE
 /////////////////////////////////////////////////////////////////////////////
-// CR: [06-30-2026]
+// CR: [09-01-2026]
 
 #include <wx/datetime.h>  // wxDateTime
 #include <wx/filename.h>  // wxFileName - encapsulates a file path
 
 #include <format>
+
+#include <tuple>  // for std::ignore
 
 #include <frozen/map.h>
 
@@ -17,6 +19,7 @@
 
 #include "base_generator.h"                   // BaseGenerator -- Base Generator class
 #include "code.h"                             // Code -- Helper class for generating code
+#include "image_gen.h"                        // CommonArtHeaderProvidesImage()
 #include "image_handler.h"                    // ImageHandler class
 #include "language_traits.h"                  // LanguageTraits, CreateLanguageStrategy
 #include "mainframe.h"                        // MainFrame class
@@ -323,7 +326,7 @@ void BaseCodeGenerator::CollectEventHandlers(Node* node, std::vector<NodeEvent*>
 
 bool BaseCodeGenerator::IsEmbeddedImageInCollection(const EmbeddedImage* embed)
 {
-    const std::lock_guard<std::mutex> lock(m_embedded_images_mutex);
+    const std::scoped_lock lock(m_embedded_images_mutex);
     return std::ranges::any_of(m_embedded_images,
                                [embed](const EmbeddedImage* pimage)
                                {
@@ -355,10 +358,10 @@ void BaseCodeGenerator::ProcessEmbeddedImages(const std::vector<wxue::string>& f
                                     std::format("Processing embedded image {}", processed_count));
                             }
                         }
-                        embed->UpdateImage(embed->base_image());
+                        std::ignore = embed->UpdateImage(embed->base_image());
                         embed->base_image().file_time = file_time;
                     }
-                    const std::lock_guard<std::mutex> lock(m_embedded_images_mutex);
+                    const std::scoped_lock lock(m_embedded_images_mutex);
                     m_embedded_images.emplace_back(embed);
                 }
                 else
@@ -429,7 +432,7 @@ void BaseCodeGenerator::ProcessAnimationEmbed(std::string_view value)
         }
 
         {
-            const std::lock_guard<std::mutex> lock(m_embedded_images_mutex);
+            const std::scoped_lock lock(m_embedded_images_mutex);
             m_embedded_images.emplace_back(embed);
         }
     }
@@ -440,7 +443,9 @@ void BaseCodeGenerator::ProcessAnimationHeaders(std::string_view value, Node* no
 {
     wxue::ViewVector parts(value, ';');
     if (parts.size() <= static_cast<size_t>(IndexImage) || parts[IndexImage].empty())
+    {
         return;
+    }
     if (wxue::is_whitespace(parts[IndexImage].front()))
     {
         parts[IndexImage].remove_prefix(1);
@@ -521,8 +526,13 @@ void BaseCodeGenerator::ProcessFormIcon(Node* node)
         {
             // If ProjectImages returns a function name, then the function will be in the
             // Images List header file, so we don't need to generate any functions for it in
-            // the source file.
-            if (ProjectImages.GetBundleFuncName(node->as_string(prop_icon)).empty())
+            // the source file. For C++, the project's common_art_header is also a provider
+            // of bundle functions.
+            const bool has_bundle_function =
+                !ProjectImages.GetBundleFuncName(node->as_string(prop_icon)).empty() ||
+                (m_language == GenLang::cplusplus &&
+                 CommonArtHeaderProvidesImage(ProjectImages.GetEmbeddedImage(parts[IndexImage])));
+            if (!has_bundle_function)
             {
                 if (parts[IndexType] == "Header" || parts[IndexType] == "XPM")
                 {
@@ -558,6 +568,15 @@ void BaseCodeGenerator::ProcessChildEmbedType(const wxue::StringVector& parts, b
 
     if (!m_ImagesForm)
     {
+        // Without an Images form we normally need the image function. However, if the image
+        // is declared in the project's common_art_header (C++ only), then its bundle
+        // function is available in that header and no helper function is needed.
+        if (auto* embed = ProjectImages.GetEmbeddedImage(parts[IndexImage]);
+            embed && m_language == GenLang::cplusplus && CommonArtHeaderProvidesImage(embed))
+        {
+            return;
+        }
+
         m_NeedImageFunction = true;
         return;
     }
@@ -565,6 +584,8 @@ void BaseCodeGenerator::ProcessChildEmbedType(const wxue::StringVector& parts, b
     // If we haven't already encountered an image that requires a function, then check to see
     // if this image is in the Images List file and has a bundle function to access it. If it
     // does, then we still don't need to generate an image function in the class file.
+    //
+    // For C++, the project's common_art_header is also a provider of bundle functions.
     if (!m_NeedImageFunction)
     {
         if (const auto* bundle = ProjectImages.GetPropertyImageBundle(&parts);
@@ -572,7 +593,8 @@ void BaseCodeGenerator::ProcessChildEmbedType(const wxue::StringVector& parts, b
         {
             if (auto* embed = ProjectImages.GetEmbeddedImage(bundle->lst_filenames[0]); embed)
             {
-                if (ProjectImages.GetBundleFuncName(embed).empty())
+                if (ProjectImages.GetBundleFuncName(embed).empty() &&
+                    !(m_language == GenLang::cplusplus && CommonArtHeaderProvidesImage(embed)))
                 {
                     m_NeedImageFunction = true;
                 }
@@ -586,6 +608,15 @@ void BaseCodeGenerator::ProcessChildSVGType(const wxue::StringVector& parts,
 {
     if (!m_ImagesForm)
     {
+        // Without an Images form we normally need the SVG function. However, if the image is
+        // declared in the project's common_art_header (C++ only), then its bundle function
+        // is available in that header and no helper function is needed.
+        if (auto* embed = ProjectImages.GetEmbeddedImage(parts[IndexImage]);
+            embed && m_language == GenLang::cplusplus && CommonArtHeaderProvidesImage(embed))
+        {
+            return;
+        }
+
         m_NeedSVGFunction = true;
         return;
     }
@@ -600,7 +631,8 @@ void BaseCodeGenerator::ProcessChildSVGType(const wxue::StringVector& parts,
     {
         if (auto* embed = ProjectImages.GetEmbeddedImage(bundle->lst_filenames[0]); embed)
         {
-            if (ProjectImages.GetBundleFuncName(embed).empty())
+            if (ProjectImages.GetBundleFuncName(embed).empty() &&
+                !(m_language == GenLang::cplusplus && CommonArtHeaderProvidesImage(embed)))
             {
                 m_NeedSVGFunction = true;
             }
@@ -740,7 +772,9 @@ void BaseCodeGenerator::WritePropSourceCode(Node* node, GenEnum::PropName prop)
         }
     }
     if (initial_bracket)
+    {
         m_source->Unindent();
+    }
     m_source->writeLine();
 }
 

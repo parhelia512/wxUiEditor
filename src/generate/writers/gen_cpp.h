@@ -235,6 +235,11 @@ private:
     std::thread m_thrd_get_events;
     std::thread m_thrd_collect_img_headers;
     std::thread m_thrd_need_img_func;
+
+    // #include statement for the project's common_art_header file, computed relative to the
+    // current form's output directory. Empty unless prop_common_art_header is set to an
+    // existing file.
+    wxue::string m_common_art_header_statement;
 };
 
 class GenData

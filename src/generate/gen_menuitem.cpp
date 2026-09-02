@@ -14,6 +14,7 @@
 
 #include "gen_common.h"     // GeneratorLibrary -- Generator classes
 #include "gen_xrc_utils.h"  // Common XRC generating functions
+#include "image_gen.h"      // CommonArtHeaderBundleName()
 #include "image_handler.h"  // ImageHandler class
 #include "mainframe.h"      // MainFrame -- Main window frame
 #include "node.h"           // Node class
@@ -154,8 +155,14 @@ bool MenuItemGenerator::SettingsCode(Code& code)
         if (code.is_cpp())
         {
             const auto& description = node->as_string(prop_bitmap);
-            if (auto function_name = ProjectImages.GetBundleFuncName(description);
-                function_name.size())
+            const wxue::StringVector description_parts(description, BMP_PROP_SEPARATOR,
+                                                       wxue::TRIM::both);
+            wxue::string function_name = ProjectImages.GetBundleFuncName(description);
+            if (function_name.empty())
+            {
+                function_name = CommonArtHeaderBundleName(&description_parts);
+            }
+            if (!function_name.empty())
             {
                 // We get here if there is an Image List that contains the function to retrieve this
                 // bundle.
@@ -216,8 +223,14 @@ bool MenuItemGenerator::SettingsCode(Code& code)
         if (code.is_cpp())
         {
             const auto& description = node->as_string(prop_unchecked_bitmap);
-            if (auto function_name = ProjectImages.GetBundleFuncName(description);
-                function_name.size())
+            const wxue::StringVector description_parts(description, BMP_PROP_SEPARATOR,
+                                                       wxue::TRIM::both);
+            wxue::string function_name = ProjectImages.GetBundleFuncName(description);
+            if (function_name.empty())
+            {
+                function_name = CommonArtHeaderBundleName(&description_parts);
+            }
+            if (!function_name.empty())
             {
                 // We get here if there is an Image List that contains the function to retrieve this
                 // bundle.

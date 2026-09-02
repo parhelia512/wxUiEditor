@@ -50,6 +50,28 @@ void InsertGeneratorInclude(Node* node, const std::string& include, std::set<std
 
 static wxue::string ConvertToCodeString(const wxue::string& text);
 
+// Returns wxue_img::bundle_<name>(...) for the given embed if the project's
+// common_art_header declares a bundle function for it (C++ only). Returns an empty string
+// if the image isn't provided by the common art header.
+static wxue::string CommonArtEmbedBundleName(const EmbeddedImage* embed,
+                                             wxSize svg_size = wxDefaultSize)
+{
+    wxue::string name;
+    if (embed && CommonArtHeaderProvidesImage(embed))
+    {
+        if (embed->base_image().type == wxBITMAP_TYPE_SVG)
+        {
+            name << "wxue_img::bundle_" << embed->base_image().array_name << "(";
+            name << svg_size.x << ", " << svg_size.y << ")";
+        }
+        else
+        {
+            name << "wxue_img::bundle_" << embed->base_image().array_name << "()";
+        }
+    }
+    return name;
+}
+
 wxue::string GenerateQuotedString(const wxue::string& str)
 {
     wxue::string code;
@@ -542,12 +564,20 @@ bool GenerateBundleCode(const wxue::string& description, wxue::string& code)
     }
     else if (description.starts_with("SVG"))
     {
+        const wxue::StringVector bundle_parts(description, BMP_PROP_SEPARATOR, wxue::TRIM::both);
         if (auto function_name = ProjectImages.GetBundleFuncName(description);
             !function_name.empty())
         {
             // We get here if there is an Image form that contains the function to retrieve this
             // bundle.
             code << function_name;
+            return false;
+        }
+        if (const wxue::string common_name = CommonArtHeaderBundleName(&bundle_parts);
+            !common_name.empty())
+        {
+            // The project's common_art_header provides the bundle function for this SVG.
+            code << common_name;
             return false;
         }
 
@@ -577,12 +607,20 @@ bool GenerateBundleCode(const wxue::string& description, wxue::string& code)
         // if there is an Images List function to load the image
 
         ASSERT_MSG(description.starts_with("Embed"), "Unknown image type!");
+        const wxue::StringVector bundle_parts(description, BMP_PROP_SEPARATOR, wxue::TRIM::both);
         if (auto function_name = ProjectImages.GetBundleFuncName(description);
             !function_name.empty())
         {
             // We get here if there is an Images List that contains the function to retrieve this
             // bundle.
             code << function_name;
+            return false;
+        }
+        if (const wxue::string common_name = CommonArtHeaderBundleName(&bundle_parts);
+            !common_name.empty())
+        {
+            // The project's common_art_header provides the bundle function for this image.
+            code << common_name;
             return false;
         }
 
@@ -594,8 +632,12 @@ bool GenerateBundleCode(const wxue::string& description, wxue::string& code)
 
                 if (auto* embed = ProjectImages.GetEmbeddedImage(bundle->lst_filenames[0]); embed)
                 {
-                    if (auto function_name = ProjectImages.GetBundleFuncName(embed);
-                        !function_name.empty())
+                    wxue::string function_name = ProjectImages.GetBundleFuncName(embed);
+                    if (function_name.empty())
+                    {
+                        function_name = CommonArtEmbedBundleName(embed);
+                    }
+                    if (!function_name.empty())
                     {
                         code << function_name;
                         return false;
@@ -617,11 +659,19 @@ bool GenerateBundleCode(const wxue::string& description, wxue::string& code)
                 if (auto* embed = ProjectImages.GetEmbeddedImage(bundle->lst_filenames[0]); embed)
                 {
                     first_function = ProjectImages.GetBundleFuncName(embed);
+                    if (first_function.empty())
+                    {
+                        first_function = CommonArtEmbedBundleName(embed);
+                    }
                     first_name = "wxue_img::" + embed->base_image().array_name;
                 }
                 if (auto* embed = ProjectImages.GetEmbeddedImage(bundle->lst_filenames[1]); embed)
                 {
                     second_function = ProjectImages.GetBundleFuncName(embed);
+                    if (second_function.empty())
+                    {
+                        second_function = CommonArtEmbedBundleName(embed);
+                    }
                     second_name = "wxue_img::" + embed->base_image().array_name;
                 }
                 code << "wxBitmapBundle::FromBitmaps(\n\t\t";
@@ -659,6 +709,10 @@ bool GenerateBundleCode(const wxue::string& description, wxue::string& code)
                     if (auto* embed = ProjectImages.GetEmbeddedImage(iter); embed)
                     {
                         function = ProjectImages.GetBundleFuncName(embed);
+                        if (function.empty())
+                        {
+                            function = CommonArtEmbedBundleName(embed);
+                        }
                         name = "wxue_img::" + embed->base_image().array_name;
                     }
                     code << "\tbitmaps.push_back(";
@@ -1183,10 +1237,17 @@ wxue::string GenerateIconCode(const wxue::string& description)
 
         const wxSize svg_size = GetSizeInfo(parts[IndexSize]);
 
+        const wxue::StringVector bundle_parts(description, BMP_PROP_SEPARATOR, wxue::TRIM::both);
         if (auto function_name = ProjectImages.GetBundleFuncName(description);
             !function_name.empty())
         {
             code << "SetIcon(" << function_name;
+        }
+        else if (const wxue::string common_name = CommonArtHeaderBundleName(&bundle_parts);
+                 !common_name.empty())
+        {
+            // The project's common_art_header provides the bundle function for this SVG.
+            code << "SetIcon(" << common_name;
         }
         else
         {
