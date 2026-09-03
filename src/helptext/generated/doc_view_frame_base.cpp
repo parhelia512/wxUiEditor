@@ -26,7 +26,6 @@ bool DocViewFrame_base::Create(wxWindow* parent, wxWindowID id, const wxString& 
     const wxPoint& pos, const wxSize& size, long style, const wxString &name)
 {
 
-    // Don't scale pos and size until after the window has been created.
     if (!wxFrame::Create(parent, id, title, pos, size, style, name))
     {
         return false;
